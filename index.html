@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quiz Certo ou Errado</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1rem;
+        }
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background-color: white;
+            padding: 2.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 mb-4">Quiz: Certo ou Errado?</h1>
+    
+    <!-- Novo layout para os contadores de pontuação -->
+    <div class="flex justify-center space-x-8 mb-6">
+        <div>
+            <p class="text-xl font-medium text-gray-600">Pontuação: <span id="score-count" class="font-bold text-blue-600">0</span></p>
+        </div>
+        <div>
+            <p class="text-xl font-medium text-gray-600">Erros: <span id="incorrect-count" class="font-bold text-red-600">0</span></p>
+        </div>
+        <div>
+            <p class="text-xl font-medium text-gray-600">Total: <span id="answered-count" class="font-bold text-gray-800">0</span></p>
+        </div>
+    </div>
+
+    <!-- Área de Exibição da Pergunta -->
+    <div id="question-box" class="bg-gray-100 p-6 sm:p-8 rounded-lg mb-6">
+        <p id="question-text" class="text-xl sm:text-2xl text-gray-700 font-semibold transition-all duration-300">
+            Carregando perguntas...
+        </p>
+    </div>
+
+    <!-- Área dos Botões de Resposta -->
+    <div class="flex space-x-4 mb-6 justify-center">
+        <button id="correct-btn" class="flex-1 py-3 px-6 rounded-full text-lg font-bold text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all duration-300 shadow-lg transform hover:scale-105">
+            Certo
+        </button>
+        <button id="wrong-btn" class="flex-1 py-3 px-6 rounded-full text-lg font-bold text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 shadow-lg transform hover:scale-105">
+            Errado
+        </button>
+    </div>
+
+    <!-- Área de Feedback -->
+    <div id="feedback-message" class="text-xl sm:text-2xl font-bold mb-6 min-h-[3rem]"></div>
+
+    <!-- Botões de Ação -->
+    <div class="flex justify-center space-x-4">
+        <button id="next-btn" class="py-3 px-8 rounded-full text-lg font-bold text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-lg transform hover:scale-105 hidden">
+            Próxima Pergunta
+        </button>
+        <button id="restart-btn" class="py-3 px-8 rounded-full text-lg font-bold text-white bg-gray-500 hover:bg-gray-600 focus:outline-none focus:ring-4 focus:ring-gray-300 transition-all duration-300 shadow-lg transform hover:scale-105">
+            Reiniciar Quiz
+        </button>
+    </div>
+</div>
+
+<script>
+    // Declarações de elementos HTML
+    const questionTextEl = document.getElementById('question-text');
+    const correctBtn = document.getElementById('correct-btn');
+    const wrongBtn = document.getElementById('wrong-btn');
+    const feedbackMessageEl = document.getElementById('feedback-message');
+    const nextBtn = document.getElementById('next-btn');
+    const restartBtn = document.getElementById('restart-btn');
+    const scoreEl = document.getElementById('score-count');
+    const incorrectCountEl = document.getElementById('incorrect-count');
+    const answeredCountEl = document.getElementById('answered-count');
+
+    let questions = [];
+    let answers = [];
+    let currentQuestionIndex = -1;
+    let answered = false;
+    let score = 0;
+    let incorrectCount = 0;
+    let answeredCount = 0;
+
+    // Função para inicializar o quiz
+    // Agora a função é assíncrona para poder carregar os arquivos de texto
+    async function initializeQuiz() {
+        try {
+            // Usa Promise.all para buscar os dois arquivos de uma vez
+            const [perguntasRes, respostasRes] = await Promise.all([
+                fetch('perguntas.txt'),
+                fetch('respostas.txt')
+            ]);
+
+            // Verifica se a requisição foi bem-sucedida
+            if (!perguntasRes.ok || !respostasRes.ok) {
+                throw new Error('Não foi possível carregar os arquivos de quiz. Verifique se eles estão na mesma pasta.');
+            }
+
+            // Converte o conteúdo dos arquivos para texto
+            const perguntasText = await perguntasRes.text();
+            const respostasText = await respostasRes.text();
+
+            // Divide as strings em arrays, onde cada linha é um elemento
+            questions = perguntasText.trim().split('\n');
+            answers = respostasText.trim().split('\n');
+
+            // Reseta o quiz e exibe a primeira pergunta aleatória
+            resetQuiz();
+        } catch (error) {
+            console.error('Erro ao carregar dados do quiz:', error);
+            questionTextEl.textContent = 'Erro ao carregar o quiz. Por favor, tente novamente mais tarde.';
+            // Desabilita os botões para evitar interações
+            correctBtn.disabled = true;
+            wrongBtn.disabled = true;
+        }
+    }
+
+    // Função para reiniciar o quiz
+    function resetQuiz() {
+        score = 0;
+        incorrectCount = 0;
+        answeredCount = 0;
+        currentQuestionIndex = -1;
+        updateScoreDisplay();
+        updateIncorrectDisplay();
+        updateAnsweredDisplay();
+        showRandomQuestion();
+    }
+
+    // Função para atualizar a pontuação na interface
+    function updateScoreDisplay() {
+        scoreEl.textContent = score;
+    }
+
+    // Função para atualizar a contagem de erros na interface
+    function updateIncorrectDisplay() {
+        incorrectCountEl.textContent = incorrectCount;
+    }
+    
+    // Função para atualizar a contagem de perguntas respondidas
+    function updateAnsweredDisplay() {
+        answeredCountEl.textContent = answeredCount;
+    }
+
+    // Função para exibir uma pergunta aleatória
+    function showRandomQuestion() {
+        let newIndex;
+        // Se todas as perguntas foram respondidas, pode-se adicionar uma mensagem de conclusão aqui.
+        if (answeredCount >= questions.length && questions.length > 0) {
+            questionTextEl.textContent = 'Fim do Quiz! Você respondeu todas as perguntas.';
+            correctBtn.disabled = true;
+            wrongBtn.disabled = true;
+            nextBtn.classList.add('hidden');
+            return;
+        }
+
+        // Garante que a próxima pergunta não seja a mesma que a anterior
+        do {
+            newIndex = Math.floor(Math.random() * questions.length);
+        } while (newIndex === currentQuestionIndex);
+
+        currentQuestionIndex = newIndex;
+        questionTextEl.textContent = questions[currentQuestionIndex];
+
+        // Reseta o estado da interface para a nova pergunta
+        feedbackMessageEl.textContent = '';
+        correctBtn.disabled = false;
+        wrongBtn.disabled = false;
+        correctBtn.classList.remove('bg-green-700', 'bg-red-700');
+        wrongBtn.classList.remove('bg-green-700', 'bg-red-700');
+        nextBtn.classList.add('hidden');
+        answered = false;
+    }
+
+    // Função para verificar a resposta do usuário
+    function checkAnswer(userChoice) {
+        if (answered) return;
+        answered = true;
+        
+        answeredCount++;
+        updateAnsweredDisplay();
+
+        const correctAnswer = answers[currentQuestionIndex];
+        const isCorrect = userChoice === correctAnswer;
+
+        if (isCorrect) {
+            feedbackMessageEl.textContent = 'Resposta Correta!';
+            feedbackMessageEl.classList.remove('text-red-500');
+            feedbackMessageEl.classList.add('text-green-500');
+            score++;
+            updateScoreDisplay();
+        } else {
+            feedbackMessageEl.textContent = 'Resposta Incorreta!';
+            feedbackMessageEl.classList.remove('text-green-500');
+            feedbackMessageEl.classList.add('text-red-500');
+            incorrectCount++;
+            updateIncorrectDisplay();
+        }
+
+        correctBtn.disabled = true;
+        wrongBtn.disabled = true;
+        nextBtn.classList.remove('hidden');
+    }
+
+    // Event Listeners para os botões
+    correctBtn.addEventListener('click', () => checkAnswer('Certo'));
+    wrongBtn.addEventListener('click', () => checkAnswer('Errado'));
+    nextBtn.addEventListener('click', showRandomQuestion);
+    restartBtn.addEventListener('click', resetQuiz);
+
+    // Inicia o quiz ao carregar a página
+    window.onload = initializeQuiz;
+</script>
+</body>
+</html>
