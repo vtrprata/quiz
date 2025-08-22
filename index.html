@@ -3,422 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quiz Certo ou Errado</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <title>Aplicativo de Questões</title>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f3f4f6;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            padding: 1rem;
-        }
-        .container {
-            max-width: 600px;
-            width: 100%;
-            background-color: white;
-            padding: 2.5rem;
-            border-radius: 1.5rem;
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            text-align: center;
-        }
+        body { font-family: 'Inter', sans-serif; }
     </style>
+
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getFirestore, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        window.firebase = { initializeApp, getFirestore, collection, getDocs, getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut };
+    </script>
 </head>
-<body>
+<body class="bg-gray-100 font-sans">
+    <div id="root"></div>
 
-<div class="container">
-    <h1 class="text-3xl sm:text-4xl font-bold text-gray-800 mb-4">Quiz: Certo ou Errado?</h1>
-    
-    <!-- Novo layout para os contadores de pontuação -->
-    <div class="flex justify-center space-x-8 mb-6">
-        <div>
-            <p class="text-xl font-medium text-gray-600">Pontuação: <span id="score-count" class="font-bold text-blue-600">0</span></p>
-        </div>
-        <div>
-            <p class="text-xl font-medium text-gray-600">Erros: <span id="incorrect-count" class="font-bold text-red-600">0</span></p>
-        </div>
-        <div>
-            <p class="text-xl font-medium text-gray-600">Total: <span id="answered-count" class="font-bold text-gray-800">0</span></p>
-        </div>
-    </div>
+    <script type="text/babel">
+        const firebaseConfig = {
+            apiKey: "AIzaSyC4EzFxpewwvx1snhDHyB5VZJXq29x58dk",
+            authDomain: "perguntas-a04c3.firebaseapp.com",
+            projectId: "perguntas-a04c3",
+            storageBucket: "perguntas-a04c3.firebasestorage.app",
+            messagingSenderId: "634470872272",
+            appId: "1:634470872272:web:1bee0b0435b4c65eef9ad5"
+        };
 
-    <!-- Área de Exibição da Pergunta -->
-    <div id="question-box" class="bg-gray-100 p-6 sm:p-8 rounded-lg mb-6">
-        <p id="question-text" class="text-xl sm:text-2xl text-gray-700 font-semibold transition-all duration-300">
-            Carregando perguntas...
-        </p>
-    </div>
+        const { useState, useEffect } = React;
 
-    <!-- Área dos Botões de Resposta -->
-    <div class="flex space-x-4 mb-6 justify-center">
-        <button id="correct-btn" class="flex-1 py-3 px-6 rounded-full text-lg font-bold text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-4 focus:ring-green-300 transition-all duration-300 shadow-lg transform hover:scale-105">
-            Certo
-        </button>
-        <button id="wrong-btn" class="flex-1 py-3 px-6 rounded-full text-lg font-bold text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-4 focus:ring-red-300 transition-all duration-300 shadow-lg transform hover:scale-105">
-            Errado
-        </button>
-    </div>
+        const App = () => {
+            const [questions, setQuestions] = useState([]);
+            const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+            const [correctCount, setCorrectCount] = useState(0);
+            const [wrongCount, setWrongCount] = useState(0);
+            const [feedback, setFeedback] = useState('');
+            const [isAnswered, setIsAnswered] = useState(false);
+            const [isLoading, setIsLoading] = useState(true);
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [user, setUser] = useState(null);
+            const [isAuthReady, setIsAuthReady] = useState(false);
 
-    <!-- Área de Feedback -->
-    <div id="feedback-message" class="text-xl sm:text-2xl font-bold mb-6 min-h-[3rem]"></div>
+            useEffect(() => {
+                const initializeFirebase = async () => {
+                    try {
+                        const app = window.firebase.initializeApp(firebaseConfig);
+                        const firestoreDb = window.firebase.getFirestore(app);
+                        const firebaseAuth = window.firebase.getAuth(app);
+                        setDb(firestoreDb);
+                        setAuth(firebaseAuth);
 
-    <!-- Botões de Ação -->
-    <div class="flex justify-center space-x-4">
-        <button id="next-btn" class="py-3 px-8 rounded-full text-lg font-bold text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-4 focus:ring-blue-300 transition-all duration-300 shadow-lg transform hover:scale-105 hidden">
-            Próxima Pergunta
-        </button>
-        <button id="restart-btn" class="py-3 px-8 rounded-full text-lg font-bold text-white bg-gray-500 hover:bg-gray-600 focus:outline-none focus:ring-4 focus:ring-gray-300 transition-all duration-300 shadow-lg transform hover:scale-105">
-            Reiniciar Quiz
-        </button>
-    </div>
-</div>
+                        window.firebase.onAuthStateChanged(firebaseAuth, async (currentUser) => {
+                            if (!currentUser) {
+                                await window.firebase.signInAnonymously(firebaseAuth);
+                            } else {
+                                setUser(currentUser);
+                                setIsAuthReady(true);
+                            }
+                        });
+                    } catch (error) {
+                        console.error("Erro ao inicializar o Firebase:", error);
+                        setIsAuthReady(true);
+                    }
+                };
+                initializeFirebase();
+            }, []);
 
-<script>
-    // Usamos strings de texto para simular os arquivos perguntas.txt e respostas.txt,
-    // garantindo que o quiz funcione em qualquer ambiente sem precisar de arquivos externos.
-    const perguntasTxt = `9 A transferência da policia do sistema de justiça para o governo da cidade marca o que pode ser considerado uma mudança de paradigma no que se refere ao papel da polícia na sociedade.
-10 Seriam mantidos a correção gramatical e os sentidos do texto caso o segundo período do primeiro parágrafo fosse reescrito da seguinte maneira: Porque nos países europeus houve empenho em prevenir crimes, o que representou nova atitude de controle social, o resultado foi o desenvolvimento de uma habilidade específica pelas autoridades policiais: a de explicar e prevenir o crime.
-11 Infere-se da leitura do primeiro parágrafo do texto que o desenvolvimento de áreas científicas ligadas à justiça criminal no século XIX está associado a visões preconceituosas sobre certos grupos de indivíduos.
-12 Um dos traços característicos da modernidade, segundo Norbert Elias, é a renúncia de certas emoções e de certos prazeres pelos indivíduos, que, em compensação, passaram a ser protegidos da violência devido à atuação do Estado.
-13 Depreende-se do segundo parágrafo do texto que a violência na era medieval era comum e socialmente aceita.
-14 Conclui-se do texto que o monopólio da violência legitima pelo Estado deveu-se à necessidade de reação aos índices insustentáveis de violência fisica entre os indivíduos.
-15 O pronome "Isso", que introduz o terceiro período do primeiro parágrafo do texto, poderia ser corretamente substituido por O que.
-16 Infere-se do segundo parágrafo do texto que a agressividade humana passou por um processo de transformação gradativo de perda de aspectos primitivos e animalescos.
-17 O emprego do vocábulo "irrupção", no último periodo do texto, indica que a violência atingia os individuos de forma súbita.
-18 Mantém-se a correção gramatical do trecho "o autocontrole e a moderação das emoções que acabaram por se impor na modernidade", do texto, caso a forma verbal "impor" seja flexionada no plural imporem.
-19 A correção gramatical do último período do texto seria mantida, embora seu sentido original fosse prejudicado, se a locução "na medida em que" fosse substituida por à medida que e a virgula empregada logo após "vida" fosse suprimida.
-20 O trecho "A conversão do controle que se exercia por terceiros no autocontrole é relacionada à organização e à estabilização de Estados modernos" poderia ser reescrito da seguinte forma, sem prejuízo para os sentidos e para a correção gramatical do texto: Converter o controle efetuado por terceiros a autocontrole concatena a organização e estabilização dos Estados do mundo moderno.
-21 A coerência e os sentidos do texto seriam mantidos caso fosse suprimido o artigo "os", no trecho "desenvolveram-se os vários campos de saber", no último período do primeiro parágrafo.
-22 Entre as características da redação oficial incluem-se a objetividade, a impessoalidade e a informatividade.
-23 Na identificação do signatário de uma comunicação oficial destinada a uma pessoa do sexo feminino, dispensa-se flexão de gênero no nome do cargo.
-24 O vocativo, nas comunicações oficiais, deverá ser sempre seguido de vírgula.
-25 De acordo com a legislação vigente, o e-mail institucional tem valor documental e, por isso, deve ser aceito como documento original.
-26 O assunto das comunicações oficiais deve apresentar de forma geral o que será tratado no documento e seu formato deve seguir as orientações do MRPR, conforme o exemplo a seguir.
-27 Se, em determinado instante, 30% da população já conhece a notícia, então, nesse instante, o seu espalhamento estaria em patamar superior a 20% por unidade de tempo.
-28 Se, em determinado instante, o espalhamento de uma noticia é igual a 16% por unidade de tempo, então, nesse instante, mais de 75% da população ainda desconhece a notícia.
-29 De acordo com a modelagem realizada, é possível que, em determinado instante, o espalhamento da noticia seja superior a 50% por unidade de tempo.
-30 O espalhamento de uma notícia será tanto maior quanto maior for o número de pessoas que dela tiverem tomado conhecimento.
-31 Mais de 550 veículos terão sido fiscalizados até o fim da sétima hora de realização da operação.
-32 Considere que {qn}, para n variando de 1 a 10, seja a sequência numérica formada pelas quantidades de veículos fiscalizados apenas no decorrer da n-ésima hora de realização da operação, ou seja, q1 é a quantidade de veículos fiscalizados apenas no decorrer da primeira hora de realização da operação; q2 é a quantidade de veículos fiscalizados apenas no decorrer da segunda hora de realização da operação; e assim por diante. Nessa situação, a sequência {qn}, para n variando de 1 a 10, é uma progressão aritmética.
-33 Embora as versões mais atuais do Mozilla Firefox e do Google Chrome permitam salvar e sincronizar senhas para realizar, posteriormente, login automático em formulários de sítios da Internet, essa ação somente será possível se os sitios em questão estiverem disponibilizados em uma intranet e utilizarem o protocolo HTTPS.
-34 No Windows, ainda que seja possível compartilhar configurações como plano de fundo e histórico de navegação do Internet Explorer entre computadores que utilizem a mesma conta em outras máquinas com Windows 10, não é permitido, em razão da segurança, o compartilhamento de senhas.
-35 Caso sejam digitados os termos descritos a seguir na ferramenta de busca do Google, serão pesquisadas publicações que contenham os termos "PRF" e "campanha" na rede social Twitter.
-36 A Internet das coisas (IoT) aumenta a quantidade e a complexidade dos dados por meio de novas formas e novas fontes de informações, influenciando diretamente em uma ou mais das características do big data, a exemplo de volume, velocidade e variedade.
-37 Ransomware é um programa malicioso de computador que se propaga por meio da inserção de cópias de si mesmo em arquivos criptografados.
-38 Identifica-se Software como Serviço (SaaS) quando um provedor de serviços oferece acesso a um ambiente baseado em cloud, no qual os usuários podem construir e disponibilizar aplicativos.
-39 O firewall da próxima geração (NGFW) dispõe, em um mesmo equipamento, de recursos como IDS (intrusion detection system), IPS (intrusion prevention system) e antivirus.
-40 Durante todo o movimento, a aceleração vetorial do projétil será constante.
-41 Na posição de altura máxima, a força resultante sobre o projétil será nula.
-42 Na posição de altura máxima, a velocidade vetorial do projétil será nula.
-43 Na posição de compressão máxima, a energia potencial elástica armazenada na mola tem valor menor que o da energia cinética do projétil antes da colisão.
-44 Como não há atrito entre o bloco de madeira e a mesa horizontal, a conservação da energia mecânica garante que o valor da energia cinética do sistema imediatamente antes da colisão seja igual ao valor da energia cinética do sistema imediatamente após a colisão.
-45 A revelação de segredo do qual o servidor se apropriou em razão do cargo enseja a penalidade de demissão, o que implica o ressarcimento ao erário por parte do servidor.
-46 De acordo com o Código de Ética Profissional do Servidor Público Civil do Poder Executivo Federal, ausência de servidor do seu local de trabalho é fator de desmoralização do serviço público, já que pode acarretar desordem nas relações humanas.
-47 A estratégia, que consiste em um mecanismo para o exercício da governança pública, compreende a definição de diretrizes, objetivos, planos e ações, para que os serviços de responsabilidade da organização alcancem o resultado pretendido.
-48 O investigado poderá ter vista dos autos, com direito a cópia se assim o desejar, mesmo antes da notificação da existência de procedimento investigatório em comissão de ética.
-49 Caso terceiro solicite, por telefone, informação sobre aquisições de determinado órgão público, o servidor deverá orientá-lo a preencher o formulário padrão, disponibilizado em meio eletrônico e fisico, com os dados exigidos pela lei.
-50 O diretor-geral da Policia Rodoviária Federal, desde que satisfeitos os requisitos legais, poderá realizar a contratação direta de empresa na qual um primo seja sócio.
-51 A duplicação dos principais eixos rodoviários, a restruturação do modelo de investimento e de exploração das ferrovias e a expansão e o aumento da capacidade da malha ferroviária são considerados condições para 0 desenvolvimento das regiões brasileiras no que diz respeito às redes de transporte.
-52 Na escala interurbana, o Brasil apresenta uma rede de transportes integrada, diversa e eficiente, o que resulta em integração regional e competitividade no contexto da economia nacional.
-53 As políticas públicas no Brasil, sobretudo as implementadas a partir da segunda metade do século passado, incentivaram o transporte rodoviário de pessoas e de cargas em detrimento de outros modais de transporte.
-54 As metrópoles brasileiras são arranjos populacionais acima de um milhão de habitantes que exercem influência direta sobre os demais niveis de cidades na rede urbana.
-55 Os arranjos populacionais de Campinas e Ribeirão Preto, no estado de São Paulo, e de Uberlândia, em Minas Gerais, configuram-se como metrópoles em ascensão na rede urbana brasileira e encontram-se no primeiro nível da hierarquia urbana.
-56 Em rodovias de via dupla de zonas rurais em que não houver sinalização regulamentadora, deve-se aplicar a automóveis, camionetas e motocicletas o mesmo limite máximo de velocidade permitido para transitar.
-57 Veiculos em movimento em via pública que possuam espelhos retrovisores em ambos os lados poderão usar cortinas nas áreas envidraçadas.
-58 Considere que, em determinada rodovia federal, tenha havido um acidente, sem vitimas, em que um veículo colidira com outro, do que resultara, para os dois veiculos, em avaria e em dano patrimonial. Nessa situação hipotética, o causador do acidente deverá preservar o local, a fim de facilitar os trabalhos da policia e da perícia, sob pena de responder por grave infração administrativa de trânsito.
-59 Para que autoridade ou agente policial possa autorizar a remoção de veículos envolvidos em acidente de trânsito ocorrido em leito de via pública que tenha causado lesão em pessoas e dano aos veiculos envolvidos, é necessário que antes tenha sido prestado socorro às vítimas e realizada a perícia no local.
-60 Cidadão que seja penalmente inimputável não pode obter habilitação para conduzir veículo automotor e elétrico.
-61 A fiscalização de trânsito por videomonitoramento independe de sinalização na via e, em caso de infração, a autoridade ou o agente de trânsito responsável pela lavratura de auto de infração deve indicar, no campo observação, informações relativas ao modo de constatação da referida infração.
-62 A emissão de Certificado de Registro e Licenciamento de Veículo em meio digital (CRLV-e), no qual constam o Certificado de Registro de Veículo (CRV) e o Certificado de Licenciamento Anual (CLA), é obrigatória se houver transferência de propriedade, sendo dispensável em caso de mudança de municipio de residência do proprietário.
-63 Os objetivos da campanha educativa de trânsito do ano de 2021 incluem divulgar, mensalmente, temas com orientações específicas, as quais promovam, por exemplo, reflexões sobre como lesões e sequelas psicológicas e sociais decorrentes de acidentes de trânsito impactam a vida das vítimas e de seus familiares.
-64 Para a medição de velocidade de veículos automotores elétricos, reboques e semirreboques em rodovias, utilizam-se medidores de velocidade do tipo fixo; entre estes, somente o medidor de velocidade do tipo fixo redutor deve obrigatoriamente ser dotado de display.
-65 Como os reboques e os semirreboques são identificados somente por placa de identificação veicular (PIV) traseira, caso seja necessário, veículos equipados com engates para reboques ou com carroceria intercambiável deverão obrigatoriamente usar uma segunda PIV traseira.
-66 Infração de trânsito concomitante é aquela em que o cometimento de uma infração tem como pressuposto o cometimento de outra.
-67 O Plano Nacional de Trânsito é composto por um rol de iniciativas e de ações, sendo um de seus pilares a mobilidade e a engenharia.
-68 A circulação de veículos em via pode ocorrer a título precário, sendo vedado o transporte de passageiro que esteja em pé no veículo ou que tenha menos de dezoito anos de idade no caso de transporte de passageiros em veiculos de carga ou misto.
-69 Lanternas especiais de emergência que emitem luz de cor azul são de uso exclusivo de veículos que estejam devidamente identificados e destinados a socorro de incêndio e salvamento, a exemplo dos veículos de polícia, de fiscalização e de operações de trânsito e de ambulâncias, quando da efetiva prestação do serviço de urgência.
-70 É permitido que veículos de passageiros, ônibus, micro-ônibus e caminhões transitem em rodovia com trincas em seus para-brisas, desde que elas estejam dentro do limite previsto em norma específica e não haja fratura de configuração circular.
-71 O equipamento em questão deve apresentar o tempo de movimentação do veículo, bem como suas interrupções.
-72 Em caso de operação de fiscalização do registrador instantâneo e inalterável de velocidade e tempo, o policial rodoviário federal deve identificar-se e assinar o verso do disco ou da fita diagrama, além de mencionar o local, a data e horário em que ocorreu a fiscalização.
-73 É de seis meses o prazo em que as informações relativas às últimas vinte e quatro horas de operação do veículo devem ficar à disposição das autoridades competentes em caso de acidente.
-74 A largura máxima autorizada para a circulação de veículos em via pública, com ou sem carga, é de 2,50 metros.
-75 Cumpridos os requisitos legais, para a combinação de veiculos de carga com mais de duas unidades, incluída a unidade tratora, o peso bruto total deve ser de até 60 toneladas.
-76 O comprimento máximo permitido para a circulação de veículos não articulados em vias públicas é de 14,00 metros.
-77 A fiscalização do tempo de direção e do intervalo de descanso pode ocorrer por meio da verificação do diário de bordo, da papeleta ou da ficha de trabalho externo, fornecidos pelo empregador.
-78 Na condução de veículo de carga com peso bruto total superior a 4.536 kg, é permitido ao motorista profissional dirigir por até seis horas e meia ininterruptas.
-79 A responsabilidade pela guarda, pela proteção e pela precisão das informações contidas equipamento no registrador instantâneo inalterável de velocidade e de tempo é do proprietário do veículo.
-80 O slogan da campanha educativa de trânsito de 2021, a qual deve ser veiculada, obrigatoriamente, nos meios de comunicação social, em toda peça publicitária de produtos automobilísticos, é: "No trânsito, sua responsabilidade salva vidas".
-81 Excetuados os produtos perigosos e a critério do policial rodoviário federal, desde que observadas as condições de segurança, produtos perecíveis e cargas vivas podem ser dispensados do remanejamento ou transbordo em caso de excesso de peso veicular.
-82 Em rodovias federais, na fiscalização de peso dos veículos por balança rodoviária, é admitida a tolerância de 12,5% sobre os limites de peso regulamentares por eixo de veículos transmitidos à superficie das vias públicas.
-83 Para a amarração de carga, é proibida a utilização de cordas, sendo permitido o seu uso exclusivamente para a fixação da lona de cobertura, quando necessário.
-84 Quando não há pontos de amarração adequados ou em número suficiente, pode-se realizar fixação dos a dispositivos de amarração no próprio chassi do veículo.
-85 Para a amarração da carga, devem ser utilizadas cintas têxteis, correntes ou cabos de aço, com resistência total à ruptura por tração de, no mínimo, 1,50 vez o peso da carga.
-86 A impetração de mandado de segurança configura controle judicial de mérito administrativo.
-87 Órgão público é ente descentralizado da administração indireta que possui personalidade juridica de direito público.
-88 Essa situação caracteriza contratação direta por dispensa de licitação.
-89 A aplicação da multa em questão decorre do poder administrativo disciplinar.
-90 O ajuizamento da ação judicial para conter eventuais abusos praticados pela administração pública caracteriza a aplicação do principio da sindicabilidade.
-91 A promoção do policial rodoviário federal para a segunda classe depende de participação em cursos de capacitação cujo conteúdo seja compatível com as atribuições do cargo e que tenha duração de, no mínimo, 150 horas.
-92 As atribuições do policial rodoviário federal de terceira classe, cuja jornada de trabalho é de quarenta horas semanais, incluem realizar patrulhamento e policiamento ostensivo.
-93 A manifestação pública em defesa da abolição de crime, por ser considerada incitação à prática de fato criminoso, não está protegida pela liberdade de reunião.
-94 Autoriza-se o confisco de bem utilizado para o tráfico de drogas nas situações em que se constatar que houve habitualidade do uso do bem para a prática do referido crime.
-95 As hipóteses de perda da nacionalidade brasileira previstas na Constituição Federal de 1988 têm natureza taxativa, de modo que nem mesmo convenções ou tratados internacionais podem ampliá-las.
-96 A Constituição Federal de 1988 não garante o direito à escusa de consciência sobre o dever de votar para os maiores de 18 anos de idade e para os menores de 70 anos de idade.
-97 De acordo com o Supremo Tribunal Federal, não é cabível habeas data para a obtenção de informações a respeito da identidade de responsáveis por agressões e denúncias feitas contra o impetrante.
-98 Durante a vigência do estado de sitio, as imunidades parlamentares poderão ser suspensas pelo voto de dois terços dos membros da respectiva casa legislativa.
-99 Em caso de decretação do estado de sitio em razão de comoção interna autorizada pelo Congresso Nacional, admite-se a suspensão de todas as garantias constitucionais.
-100 A remarcação de novo número no chassi e a falsificação do certificado de registro do veículo caracterizam crime único de falsificação de documento público.
-101 A remarcação do chassi com o mesmo número original do veiculo caracteriza crime contra a fé pública e infração administrativa de trânsito.
-102 Ao oferecer dinheiro para ser irregularmente liberado da blitz, o condutor praticou o crime de corrupção ativa.
-103 Nessa situação, se o policial não aceitar o dinheiro oferecido, a conduta da pessoa deve ser punida na modalidade tentada.
-104 A adulteração grosseira do chassi do veículo não caracteriza crime impossivel.
-105 A busca e a apreensão no veículo foram ilícitas, já que o policial as realizou sem autorização judicial.
-106 A situação caracteriza flagrante próprio e, em até vinte e quatro horas após a realização da prisão, deverá ser entregue a nota de culpa ao preso.
-107 A identificação criminal do condutor não poderá ser feita, uma vez que ele foi identificado civilmente pela CNH.
-108 O policial poderá ser arrolado como testemunha, caso em que seu depoimento terá valor probatório superior ao do interrogatório do condutor.
-109 A prisão do condutor é uma espécie de prisão provisória, dispensa a expedição de mandado e o policial deve exigir o recibo de entrega do preso.
-110 Caso três pessoas associadas, com divisão de tarefas, subtraiam substância explosiva, estará configurado crime hediondo.
-111 Qualquer agente público, ainda que não seja servidor e não perceba remuneração, pode ser sujeito ativo do crime de abuso de autoridade.
-112 Mesmo em caso de apresentação do documento de identificação civil, é possível a identificação criminal em caso de constar de registros policiais o uso de outros nomes ou diferentes qualificações.
-113 Entre as atividades de prevenção do uso indevido de drogas, está o fortalecimento da autonomia e da responsabilidade individual em relação ao uso indevido dessas substâncias ilícitas.
-114 Conduzir arma de fogo, no exercício de atividade comercial, sem autorização, configura comércio ilegal de arma de fogo.
-115 Praticam o crime de tortura policiais rodoviários federais que, dentro de um posto policial, submetem o autor de crime a sofrimento físico, independentemente de sua intensidade.
-116 A mera intuição de que esteja havendo tráfico de drogas em uma casa não configura justa causa para autorizar o ingresso sem mandado judicial ou sem o consentimento do morador, exceto em caso de flagrante delito.
-117 O aviso prévio é uma condicionante ao exercício do direito de reunião previsto na CF: a inexistência de notificação às autoridades competentes torna ilegal a manifestação coletiva.
-118 A alteração do gênero nos assentamentos de registro civil independe da realização de procedimento cirúrgico, denominado transgenitalização, ou da comprovação da realização de tratamentos hormonais ou patologizantes, por parte da pessoa interessada.
-119 A Declaração Universal dos Direitos Humanos, um dos primeiros instrumentos normativos gerais de direitos humanos adotados por uma organização internacional, destacou-se pelo fato de comportar a ideia de dignidade da pessoa humana como ponto de convergência da ética universal e do fundamento valorativo do sistema protetivo global dos direitos humanos.
-120 A Convenção Internacional dos Direitos das Pessoas com Deficiência possui status supraconstitucional no ordenamento pátrio, sendo um exemplo de instrumento normativo internacional de caráter inclusivo adotado pelo Brasil para promover a acessibilidade e a autodeterminação de pessoas com deficiência.`;
+            useEffect(() => {
+                const fetchQuestions = async () => {
+                    if (isAuthReady && db && auth) {
+                        setIsLoading(true);
+                        try {
+                            const questionsCollectionRef = window.firebase.collection(db, 'questions');
+                            const querySnapshot = await window.firebase.getDocs(questionsCollectionRef);
+                            const fetchedQuestions = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            if (fetchedQuestions.length > 0) {
+                                setQuestions(fetchedQuestions.sort(() => Math.random() - 0.5));
+                            } else {
+                                setQuestions([]);
+                            }
+                        } catch (error) {
+                            console.error("Erro ao buscar perguntas:", error);
+                        } finally {
+                            setIsLoading(false);
+                        }
+                    }
+                };
+                fetchQuestions();
+            }, [isAuthReady, db, auth]);
 
-    const respostasTxt = `C
-E
-C
-E
-E
-E
-X
-E
-C
-E
-C
-E
-E
-C
-C
-C
-C
-E
-E
-E
-E
-C
-C
-E
-E
-C
-C
-E
-E
-X
-C
-C
-E
-E
-X
-C
-E
-E
-C
-E
-E
-E
-C
-C
-C
-E
-E
-E
-C
-E
-E
-E
-C
-C
-C
-C
-E
-C
-C
-C
-C
-C
-C
-C
-C
-E
-E
-E
-E
-E
-C
-E
-C
-X
-C
-E
-E
-E
-C
-E
-E
-C
-C
-C
-C
-E
-E
-E
-C
-E
-E
-C
-E`;
+            const handleGoogleSignIn = async () => {
+                const provider = new window.firebase.GoogleAuthProvider();
+                try { await window.firebase.signInWithPopup(auth, provider); } catch (error) { console.error("Erro no login com Google:", error); }
+            };
 
-    // Declarações de elementos HTML
-    const questionTextEl = document.getElementById('question-text');
-    const correctBtn = document.getElementById('correct-btn');
-    const wrongBtn = document.getElementById('wrong-btn');
-    const feedbackMessageEl = document.getElementById('feedback-message');
-    const nextBtn = document.getElementById('next-btn');
-    const restartBtn = document.getElementById('restart-btn');
-    const scoreEl = document.getElementById('score-count');
-    const incorrectCountEl = document.getElementById('incorrect-count');
-    const answeredCountEl = document.getElementById('answered-count');
+            const handleLogout = async () => {
+                try { await window.firebase.signOut(auth); setUser(null); } catch (error) { console.error("Erro no logout:", error); }
+            };
 
-    let questions = [];
-    let answers = [];
-    let currentQuestionIndex = -1;
-    let answered = false;
-    let score = 0;
-    let incorrectCount = 0;
-    let answeredCount = 0;
+            const handleAnswer = (userAnswer) => {
+                if (isAnswered) return;
+                const currentQuestion = questions[currentQuestionIndex];
+                const isCorrect = userAnswer.toLowerCase() === currentQuestion.respostaCorreta.toLowerCase();
+                setIsAnswered(true);
+                if (isCorrect) { setCorrectCount(p => p + 1); setFeedback('Correto!'); }
+                else { setWrongCount(p => p + 1); setFeedback('Errado!'); }
+                setTimeout(() => { setFeedback(''); setIsAnswered(false); setCurrentQuestionIndex(p => p + 1); }, 1500);
+            };
 
-    // Função para inicializar o quiz
-    function initializeQuiz() {
-        questions = perguntasTxt.trim().split('\n');
-        answers = respostasTxt.trim().split('\n');
-        resetQuiz();
-    }
+            const handleRestart = () => {
+                setCorrectCount(0); setWrongCount(0); setCurrentQuestionIndex(0);
+                setQuestions([...questions].sort(() => Math.random() - 0.5));
+                setFeedback('');
+            };
 
-    // Função para reiniciar o quiz
-    function resetQuiz() {
-        score = 0;
-        incorrectCount = 0;
-        answeredCount = 0;
-        currentQuestionIndex = -1;
-        updateScoreDisplay();
-        updateIncorrectDisplay();
-        updateAnsweredDisplay();
-        showRandomQuestion();
-    }
+            if (isLoading || !isAuthReady) {
+                return <div className="flex flex-col items-center justify-center min-h-screen"><h1 className="text-3xl font-bold animate-pulse">Carregando perguntas...</h1></div>;
+            }
 
-    // Função para atualizar a pontuação na interface
-    function updateScoreDisplay() {
-        scoreEl.textContent = score;
-    }
+            if (questions.length === 0) {
+                return <div className="flex flex-col items-center justify-center min-h-screen text-center"><h1 className="text-3xl font-bold mb-4">Nenhuma pergunta encontrada.</h1><p className="text-gray-600">Cadastre perguntas na coleção `questions` do Firestore.</p></div>;
+            }
 
-    // Função para atualizar a contagem de erros na interface
-    function updateIncorrectDisplay() {
-        incorrectCountEl.textContent = incorrectCount;
-    }
-    
-    // Função para atualizar a contagem de perguntas respondidas
-    function updateAnsweredDisplay() {
-        answeredCountEl.textContent = answeredCount;
-    }
+            if (currentQuestionIndex >= questions.length) {
+                return <div className="flex flex-col items-center justify-center min-h-screen text-center"><div className="bg-white p-8 rounded-2xl shadow-xl"><h1 className="text-4xl font-extrabold text-blue-600 mb-4">Quiz Finalizado!</h1><p className="text-2xl text-green-600">Acertos: {correctCount}</p><p className="text-2xl text-red-600 mb-6">Erros: {wrongCount}</p><button onClick={handleRestart} className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl">Reiniciar</button></div></div>;
+            }
 
-    // Função para exibir uma pergunta aleatória
-    function showRandomQuestion() {
-        let newIndex;
-        // Se todas as perguntas foram respondidas, pode-se adicionar uma mensagem de conclusão aqui.
-        if (answeredCount >= questions.length && questions.length > 0) {
-            questionTextEl.textContent = 'Fim do Quiz! Você respondeu todas as perguntas.';
-            correctBtn.disabled = true;
-            wrongBtn.disabled = true;
-            nextBtn.classList.add('hidden');
-            return;
-        }
+            const currentQuestion = questions[currentQuestionIndex];
 
-        // Garante que a próxima pergunta não seja a mesma que a anterior
-        do {
-            newIndex = Math.floor(Math.random() * questions.length);
-        } while (newIndex === currentQuestionIndex);
+            return (
+                <div className="min-h-screen flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-xl">
+                        <div className="w-full text-right mb-4">
+                            {user && user.isAnonymous === false ? (
+                                <div className="flex items-center justify-end space-x-2">
+                                    <span className="text-gray-700">Olá, {user.displayName || 'Usuário'}!</span>
+                                    <button onClick={handleLogout} className="py-1 px-3 bg-gray-200 rounded-lg">Sair</button>
+                                </div>
+                            ) : (
+                                <button onClick={handleGoogleSignIn} className="px-4 py-2 bg-blue-500 text-white rounded-xl">Login com Google</button>
+                            )}
+                        </div>
 
-        currentQuestionIndex = newIndex;
-        questionTextEl.textContent = questions[currentQuestionIndex];
+                        <h1 className="text-3xl font-bold text-blue-600 mb-6">Aplicativo de Questões</h1>
 
-        // Reseta o estado da interface para a nova pergunta
-        feedbackMessageEl.textContent = '';
-        correctBtn.disabled = false;
-        wrongBtn.disabled = false;
-        correctBtn.classList.remove('bg-green-700', 'bg-red-700');
-        wrongBtn.classList.remove('bg-green-700', 'bg-red-700');
-        nextBtn.classList.add('hidden');
-        answered = false;
-    }
+                        <div className="mb-8">
+                            <div className="bg-gray-50 p-6 rounded-xl border mb-4"><p className="text-sm font-semibold">Banca:</p><p className="text-lg font-bold">{currentQuestion?.banca || 'N/A'}</p></div>
+                            <div className="bg-gray-50 p-6 rounded-xl border"><p className="text-sm font-semibold">Questão:</p><p className="text-xl">{currentQuestion?.questao || 'N/A'}</p></div>
+                        </div>
 
-    // Função para verificar a resposta do usuário
-    function checkAnswer(userChoice) {
-        if (answered) return;
-        answered = true;
-        
-        answeredCount++;
-        updateAnsweredDisplay();
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <button onClick={() => handleAnswer('Certo')} disabled={isAnswered} className={`py-4 rounded-xl text-white font-bold ${isAnswered ? 'bg-gray-400' : 'bg-green-500 hover:bg-green-600'}`}>Certo</button>
+                            <button onClick={() => handleAnswer('Errado')} disabled={isAnswered} className={`py-4 rounded-xl text-white font-bold ${isAnswered ? 'bg-gray-400' : 'bg-red-500 hover:bg-red-600'}`}>Errado</button>
+                        </div>
 
-        // O gabarito tem 'C' para Certo e 'E' para Errado, exceto 'X' para questões anuladas.
-        const correctAnswer = answers[currentQuestionIndex];
-        let isCorrect = false;
+                        {feedback && <p className={`text-xl font-bold mb-4 ${feedback === 'Correto!' ? 'text-green-600' : 'text-red-600'}`}>{feedback}</p>}
 
-        if (correctAnswer === 'C' && userChoice === 'Certo') {
-            isCorrect = true;
-        } else if (correctAnswer === 'E' && userChoice === 'Errado') {
-            isCorrect = true;
-        } else if (correctAnswer === 'X') {
-            // Se a questão foi anulada, qualquer resposta é considerada correta.
-            isCorrect = true;
-        }
+                        <div className="text-center mb-6">
+                            <p className="text-sm font-semibold mb-2">Sessão Atual:</p>
+                            <div className="flex justify-around bg-gray-50 p-4 rounded-xl">
+                                <div><span className="text-2xl font-bold text-green-600">{correctCount}</span><p className="text-xs">Acertos</p></div>
+                                <div><span className="text-2xl font-bold text-red-600">{wrongCount}</span><p className="text-xs">Erros</p></div>
+                            </div>
+                        </div>
 
-        if (isCorrect) {
-            feedbackMessageEl.textContent = 'Resposta Correta!';
-            feedbackMessageEl.classList.remove('text-red-500');
-            feedbackMessageEl.classList.add('text-green-500');
-            score++;
-            updateScoreDisplay();
-        } else {
-            feedbackMessageEl.textContent = 'Resposta Incorreta!';
-            feedbackMessageEl.classList.remove('text-green-500');
-            feedbackMessageEl.classList.add('text-red-500');
-            incorrectCount++;
-            updateIncorrectDisplay();
-        }
+                        <button onClick={handleRestart} className="w-full px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-bold rounded-xl">Reiniciar</button>
+                    </div>
+                </div>
+            );
+        };
 
-        correctBtn.disabled = true;
-        wrongBtn.disabled = true;
-        nextBtn.classList.remove('hidden');
-    }
-
-    // Event Listeners para os botões
-    correctBtn.addEventListener('click', () => checkAnswer('Certo'));
-    wrongBtn.addEventListener('click', () => checkAnswer('Errado'));
-    nextBtn.addEventListener('click', showRandomQuestion);
-    restartBtn.addEventListener('click', resetQuiz);
-
-    // Inicia o quiz ao carregar a página
-    window.onload = initializeQuiz;
-</script>
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
